@@ -2,6 +2,7 @@
 This module is a generic class to introduce whatever kind of distribution in the simulator
 
 """
+import math
 import random
 import numpy as np
 import warnings
@@ -91,3 +92,15 @@ class uniformDistribution(Distribution):
         super(uniformDistribution, self).__init__(**kwargs)
     def next(self):
         return random.randint(self.min, self.max)
+
+class oneoffDistribution(Distribution):
+    def __init__(self,time, **kwargs):
+        super(oneoffDistribution, self).__init__(**kwargs)
+        self.value = 1
+        self.sent = False
+        self.time = time
+    def next(self):
+        if not self.sent:
+            self.sent = True
+            return self.time
+        return math.inf

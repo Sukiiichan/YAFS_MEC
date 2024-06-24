@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import random
+import numpy as np
 
 class Message:
     """
@@ -10,7 +11,7 @@ class Message:
 
         src (str): the name of module who send this message
 
-        dst (dst): the nsame of module who receive this message
+        dst (dst): the name of module who receive this message
 
         inst (int): the number of instructions to be executed ((by default 0), Instead of MIPS, we use IPt since the time is relative to the simulation units.
 
@@ -26,7 +27,7 @@ class Message:
         app_name (str): the name of the application
     """
 
-    def __init__(self, name, src, dst, instructions=0, bytes=0,broadcasting=False):
+    def __init__(self, name, src, dst, instructions=0, bytes=0, broadcasting=False):
         self.name = name
         self.src = src
         self.dst = dst
@@ -44,47 +45,18 @@ class Message:
         self.last_idDes = []
         self.id = -1
 
-        self.original_DES_src = None #This attribute identifies the user when multiple users are in the same node
+        self.original_DES_src = None  # This attribute identifies the user when multiple users are in the same node
 
     def __str__(self):
-        print  ("{--")
-        print (" Name: %s (%s)" %(self.name,self.id))
-        print (" From (src): %s  to (dst): %s" %(self.src,self.dst))
-        print (" --}")
+        print("{--")
+        print(" Name: %s (%s)" % (self.name, self.id))
+        print(" From (src): %s  to (dst): %s" % (self.src, self.dst))
+        print(" --}")
         return ("")
 
+
 def fractional_selectivity(threshold):
-    return random.random() <= threshold
-
-
-def create_applications_from_json(data):
-    applications = {}
-    for app in data:
-        a = Application(name=app["name"])
-        modules = [{"None": {"Type": Application.TYPE_SOURCE}}]
-        for module in app["module"]:
-            modules.append({module["name"]: {"RAM": module["RAM"], "Type": Application.TYPE_MODULE}})
-        a.set_modules(modules)
-
-        ms = {}
-        for message in app["message"]:
-            # print "Creando mensaje: %s" %message["name"]
-            ms[message["name"]] = Message(message["name"], message["s"], message["d"],
-                                          instructions=message["instructions"], bytes=message["bytes"])
-            if message["s"] == "None":
-                a.add_source_messages(ms[message["name"]])
-
-        # print "Total mensajes creados %i" %len(ms.keys())
-        for idx, message in enumerate(app["transmission"]):
-            if "message_out" in message.keys():
-                a.add_service_module(message["module"], ms[message["message_in"]], ms[message["message_out"]],
-                                     fractional_selectivity, threshold=1.0)
-            else:
-                a.add_service_module(message["module"], ms[message["message_in"]])
-
-        applications[app["name"]] = a
-
-    return applications
+    return np.random.random() <= threshold
 
 
 class Application:
@@ -110,30 +82,30 @@ class Application:
     def __init__(self, name):
         self.name = name
         self.services = {}
+        # a dict, services[modulename] = {}, in the form
+        # {"type": Application.TYPE_MODULE, "dist": distribution, "param": param,
+        # "message_in_list": [message_in], "message_out_list": message_out, "module_dest": module_dest, "p": p}
         self.messages = {}
-        self.modules = []
-        self.modules_src = []
-        self.modules_sink = []
+        self.modules = []  # all modules
+        self.modules_src = []  # json_config source modules
+        self.modules_sink = []  # user module
         self.data = {}
 
     def __str__(self):
-        print ("___ APP. Name: %s" % self.name)
-        print (" __ Transmissions ")
+        print("___ APP. Name: %s" % self.name)
+        print(" __ Transmissions ")
         for m in self.messages.values():
-            print ("\tModule: None : M_In: %s  -> M_Out: %s " %(m.src,m.dst))
+            print("\tModule: None : M_In: %s  -> M_Out: %s " % (m.src, m.dst))
 
         for modulename in self.services.keys():
-            m = self.services[modulename]
-            print ("\t",modulename)
-            for ser in m:
-                if "message_in" in ser.keys():
-                    try:
-                            print ("\t\t M_In: %s  -> M_Out: %s " % (ser["message_in"].name, ser["message_out"].name))
-                    except:
-                            print ("\t\t M_In: %s  -> M_Out: [NOTHING] " % (ser["message_in"].name))
+            m = self.services[modulename]  # a dict
+            print("\t", modulename)
+
+            if "message_in_list" in m.keys():
+                message_in_list = m["message_in_list"]
         return ""
 
-    def set_modules(self,data):
+    def set_modules(self, data):
         """
         Pure source or sink modules must be typified
 
@@ -153,6 +125,7 @@ class Application:
         self.data = data
 
         # self.modules_sink = modules
+
     # def set_module(self, modules, type_module):
     #     """
     #     Pure source or sink modules must be typified
@@ -188,8 +161,7 @@ class Application:
         """
         self.messages[msg.name] = msg
 
-
-    def get_message(self,name):
+    def get_message(self, name):
         """
         Returns: a message instance from the identifier name
         """
@@ -199,7 +171,7 @@ class Application:
     ADD SERVICE
     """
 
-    def add_service_source(self, module_name, distribution=None, message=None, module_dest=[], p=[]):
+    def add_service_source(self, module_name, distribution=None, message_out_list=None, p=[]):
         """
         Link to each non-pure module a management for creating messages
 
@@ -208,7 +180,7 @@ class Application:
 
             distribution (function): a function with a distribution function
 
-            message (Message): the message
+            message_out_list (List[Message]): the messages out
 
             module_dest (list): a list of modules who can receive this message. Broadcasting.
 
@@ -221,12 +193,12 @@ class Application:
         if distribution is not None:
             if module_name not in self.services:
                 self.services[module_name] = []
-            self.services[module_name].append(
-                {"type": Application.TYPE_SOURCE, "dist": distribution,
-                 "message_out": message, "module_dest": module_dest, "p": p})
+            self.services[module_name] = {"type": Application.TYPE_SOURCE, "dist": distribution,
+                                          "message_out_list": message_out_list, "p": p}
 
-    def add_service_module(self, module_name, message_in, message_out="", distribution="", module_dest=[], p=[],
-                           **param):
+    def add_service_module(self, module_name, message_in_list, message_out_list, distribution="",
+                               p=[],
+                               **param):
 
         """
         Link to each non-pure module a management of transfering of messages
@@ -234,9 +206,9 @@ class Application:
         Args:
             module_name (str): module name
 
-            message_in (Message): input message
+            message_in_list (List[Message]): input message
 
-            message_out (Message): output message. If Empty the module is a sink
+            message_out_list (List[Message]): output message. If Empty the module is a sink
 
             distribution (function): a function with a distribution function
 
@@ -248,9 +220,8 @@ class Application:
             param (dict): the parameters for *distribution* function
 
         """
-        if not module_name in self.services:
+        if module_name not in self.services:
             self.services[module_name] = []
 
-        self.services[module_name].append({"type": Application.TYPE_MODULE, "dist": distribution, "param": param,
-                                           "message_in": message_in, "message_out": message_out,
-                                           "module_dest": module_dest, "p": p})
+        self.services[module_name] = {"type": Application.TYPE_MODULE, "dist": distribution, "param": param,
+                                      "message_in_list": message_in_list, "message_out_list": message_out_list, "p": p}
